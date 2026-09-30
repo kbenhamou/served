@@ -7,6 +7,10 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <stdbool.h>
+#include <sys/stat.h>
+
+/* A Basic HTTP 1.0 Server */
+/* Samuel-Karim Benhamou */
 
 struct request {
     char *type;
@@ -27,7 +31,28 @@ bool parse_request(char* buf, struct request *req) {
         }
         return true;
     }
-  }
+}
+
+const char *get_mime_type(const char *path) {
+    char *ext = strrchr(path, '.');
+    if(!ext) {
+      return "html/plain";
+    } // text, image, application
+    if(strcmp(ext, ".html") == 0 || strcmp(ext, ".htm") == 0) {
+        return "text/html";
+    } else if (strcmp(ext, ".css") == 0) {
+        return "text/css";
+    } else if (strcmp(ext, ".js") == 0) {
+        return "application/js";
+    } else if (strcmp(ext, ".png") == 0) {
+        return "image/png";
+    } else if (strcmp(ext, ".webp") == 0) {
+        return "image/webp";
+    } else if (strcmp(ext, ".jpg") == 0 || strcmp(ext, ".jpeg") == 0) {
+        return "image/jpg";
+    }
+    return "text/plain";
+}
 int main() {
     int serverfd = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in address;
@@ -56,14 +81,34 @@ int main() {
             struct request new_req;
             if(parse_request(buf, &new_req)) {
                 printf("Request Type: %s\n", new_req.type);
-                printf("Request Path: %s\n", new_req.path);
+                printf("Request Path: %s\n\n", new_req.path);
+                char file_path[512];
+                snprintf(file_path, sizeof(file_path), "./public%s", new_req.path);
                 // to-do:
-                // phase 4: serve files (use stat() to check that the file exists, else 404 file not found)
-                // inspect file type and set appropriate mime header (text/html, text/css, etc.)
-                // build http response
                 // send the file to the socket (client_fd)
                 // close
-                //
+                char *path = new_req.path;
+                if(strcmp(path, "/") == 0) {
+                    snprintf(file_path, sizeof(file_path), "./public/index/html");
+                }
+                struct stat check_file;
+                int success = stat(file_path, &check_file);
+                if(success < 0 || S_ISDIR(check_file.st_mode)) {
+                  printf("404 file not found");
+                  return -1;
+                }
+                const char *file_type = get_mime_type(file_path); 
+                long file_size = check_file.st_size;
+                char response[1024];
+                snprintf(response, sizeof(response), 
+                    "HTTP/1.1 200 OK\r\n"
+                    "Content-Type: %s\r\n"
+                    "Content-Length: %ld\r\n"
+                    "Connection: close\r\n"
+                    "\r\n",
+                    file_type, file_size
+                );
+                printf("%s\n", response);
                 // phase 5: concurrency (when calling accept, spawn new thread)
             } else {
                 printf("Failed to parse HTTP request.\n");
